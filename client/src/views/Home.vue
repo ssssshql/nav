@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
-import { Search, Plus, Trash2, X, Loader2, Globe, LayoutGrid, Type, Image as ImageIcon, Upload, Edit } from 'lucide-vue-next'
+import { Search, Plus, Trash2, X, Loader2, Image as ImageIcon, Upload, Edit, LogOut } from 'lucide-vue-next'
 
 const auth = useAuthStore()
 const sites = ref([])
@@ -18,6 +18,7 @@ const showAddModal = ref(false)
 const newSite = ref({ title: '', url: '', icon: '', category: '日常' })
 const isFetchingIcon = ref(false)
 const fileInput = ref(null)
+const showUserMenu = ref(false)
 
 const showContextMenu = ref(false)
 const contextMenuPos = ref({ x: 0, y: 0 })
@@ -25,30 +26,6 @@ const selectedSite = ref(null)
 
 const getSiteInitial = (title) => {
   return title ? title.charAt(0).toUpperCase() : '?'
-}
-
-const getRandomBgColor = (title) => {
-  const colors = [
-    'bg-red-100 text-red-600',
-    'bg-orange-100 text-orange-600',
-    'bg-amber-100 text-amber-600',
-    'bg-yellow-100 text-yellow-600',
-    'bg-lime-100 text-lime-600',
-    'bg-green-100 text-green-600',
-    'bg-emerald-100 text-emerald-600',
-    'bg-teal-100 text-teal-600',
-    'bg-cyan-100 text-cyan-600',
-    'bg-sky-100 text-sky-600',
-    'bg-blue-100 text-blue-600',
-    'bg-indigo-100 text-indigo-600',
-    'bg-violet-100 text-violet-600',
-    'bg-purple-100 text-purple-600',
-    'bg-fuchsia-100 text-fuchsia-600',
-    'bg-pink-100 text-pink-600',
-    'bg-rose-100 text-rose-600',
-  ]
-  const index = title ? title.charCodeAt(0) % colors.length : 0
-  return colors[index]
 }
 
 const fetchSites = async () => {
@@ -61,8 +38,11 @@ const fetchSites = async () => {
 }
 
 let fetchTimer = null
+let skipFetch = false
 watch(() => newSite.value.url, (newUrl) => {
   if (!newUrl || !newUrl.startsWith('http')) return
+  
+  if (skipFetch || newSite.value.icon) return
   
   if (fetchTimer) clearTimeout(fetchTimer)
   fetchTimer = setTimeout(async () => {
@@ -71,11 +51,9 @@ watch(() => newSite.value.url, (newUrl) => {
       const { data } = await axios.post('/api/fetch-favicon', { url: newUrl })
       if (data.icon) {
         newSite.value.icon = data.icon
-      } else {
-        newSite.value.icon = ''
       }
     } catch (e) {
-      newSite.value.icon = ''
+      // ignore
     } finally {
       isFetchingIcon.value = false
     }
@@ -124,6 +102,7 @@ const deleteSite = async () => {
 
 const editSite = () => {
   if (!selectedSite.value) return
+  skipFetch = true
   newSite.value = { ...selectedSite.value }
   showAddModal.value = true
   closeContextMenu()
@@ -133,9 +112,7 @@ const handleContextMenu = (e, site) => {
   if (!auth.isLoggedIn) return
   showContextMenu.value = true
   selectedSite.value = site
-  const x = e.clientX
-  const y = e.clientY
-  contextMenuPos.value = { x, y }
+  contextMenuPos.value = { x: e.clientX, y: e.clientY }
 }
 
 const closeContextMenu = () => {
@@ -156,6 +133,7 @@ const filteredSites = computed(() => {
 
 const onGlobalClick = () => {
   if (showContextMenu.value) closeContextMenu()
+  if (showUserMenu.value) showUserMenu.value = false
 }
 
 onMounted(() => {
@@ -169,232 +147,205 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#f5f5f5] flex flex-col items-center py-12 px-4 font-sans text-[#111111]" @contextmenu.prevent>
-    <div class="w-full max-w-6xl">
+  <div class="min-h-screen bg-white" @contextmenu.prevent>
+    <div class="max-w-4xl mx-auto px-6 py-12">
       <!-- Header -->
-      <div class="flex items-center justify-between mb-8">
-        <h1 class="text-2xl font-bold tracking-tight text-[#111111]">Nexus</h1>
-        <div class="flex items-center gap-4">
-          <button v-if="auth.isLoggedIn" @click="newSite = { title: '', url: '', icon: '', category: '日常' }; showAddModal = true" class="text-sm font-medium text-gray-500 hover:text-[#111111] transition-colors flex items-center gap-1.5">
-            <Plus class="h-4 w-4" />
-            <span>添加</span>
-          </button>
-          <button v-if="auth.isLoggedIn" @click="auth.logout" class="text-sm font-medium text-gray-500 hover:text-red-500 transition-colors">
-            退出
-          </button>
-          <router-link v-else to="/login" class="text-sm font-medium text-gray-500 hover:text-[#111111] transition-colors">登录</router-link>
-        </div>
-      </div>
+      <header class="flex items-center justify-between mb-8">
+        <h1 class="text-lg font-medium text-gray-900">Quick</h1>
+        
+        <template v-if="auth.isLoggedIn">
+          <div class="relative">
+            <button 
+              @click.stop="showUserMenu = !showUserMenu" 
+              class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-sm text-gray-600"
+            >
+              {{ auth.username?.charAt(0).toUpperCase() || 'U' }}
+            </button>
+            
+            <transition
+              enter-active-class="transition ease-out duration-100"
+              enter-from-class="opacity-0"
+              enter-to-class="opacity-100"
+              leave-active-class="transition ease-in duration-75"
+              leave-from-class="opacity-100"
+              leave-to-class="opacity-0"
+            >
+              <div v-if="showUserMenu" class="absolute right-0 top-10 mt-1 w-32 bg-white border border-gray-100 rounded-lg py-1 z-50 shadow-sm">
+                <button @click="skipFetch = false; newSite = { title: '', url: '', icon: '', category: '日常' }; showAddModal = true; showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors">
+                  <Plus class="w-3 h-3" />
+                  添加
+                </button>
+                <button @click="auth.logout(); showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-red-500 hover:bg-gray-50 transition-colors">
+                  <LogOut class="w-3 h-3" />
+                  退出
+                </button>
+              </div>
+            </transition>
+          </div>
+        </template>
+        <template v-else>
+          <router-link to="/login" class="text-sm text-gray-400">登录</router-link>
+        </template>
+      </header>
 
       <!-- Search -->
-      <div class="mb-8">
-        <div class="relative max-w-2xl mx-auto">
-          <input 
-            v-model="searchQuery"
-            type="text" 
-            class="block w-full pl-12 pr-12 py-3 bg-white border border-gray-200 rounded-none text-base placeholder-gray-400 focus:border-gray-300 focus:ring-0 transition-all outline-none" 
-            placeholder="搜索..." 
-          />
-          <div class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
-            <Search class="h-5 w-5" />
-          </div>
-        </div>
+      <div class="mb-6">
+        <input 
+          v-model="searchQuery"
+          type="text" 
+          class="w-full px-4 py-2 bg-gray-50 border-0 rounded-lg text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:bg-gray-100 transition-colors"
+          placeholder="搜索..." 
+        />
       </div>
 
-      <!-- Top Categories -->
-      <div class="mb-8 flex justify-center flex-wrap gap-2">
+      <!-- Categories -->
+      <div class="mb-8 flex gap-2 text-xs">
         <button
           v-for="cat in categories"
           :key="cat"
           @click="currentCategory = cat"
           :class="[
             currentCategory === cat 
-              ? 'bg-gray-200 text-[#111111] font-medium' 
-              : 'text-gray-500 hover:text-[#111111] hover:bg-gray-100'
+              ? 'text-gray-900' 
+              : 'text-gray-400 hover:text-gray-600'
           ]"
-          class="px-4 py-2 text-sm transition-colors"
+          class="transition-colors"
         >
           {{ cat }}
         </button>
       </div>
 
-      <!-- Main Grid -->
-      <main @click="closeContextMenu">
+      <!-- Sites Grid -->
+      <main @click="closeContextMenu" class="mb-12">
         <div class="grid grid-cols-6 gap-4">
-            <a 
-              v-for="site in filteredSites" 
-              :key="site.id" 
-              :href="site.url" 
-              target="_blank"
-              @contextmenu.prevent.stop="handleContextMenu($event, site)"
-              class="group flex flex-col items-center gap-2 p-4 hover:bg-gray-100 transition-colors"
-            >
-              <div class="w-10 h-10 flex items-center justify-center bg-white border border-gray-200">
-                <img 
-                  v-if="site.icon" 
-                  :src="site.icon" 
-                  class="w-6 h-6 object-contain" 
-                  alt=""
-                  @error="site.icon = ''"
-                />
-                <span v-else :class="['w-6 h-6 flex items-center justify-center text-sm font-bold', getRandomBgColor(site.title)]">
-                  {{ getSiteInitial(site.title) }}
-                </span>
-              </div>
-              <span class="text-xs text-gray-600 group-hover:text-[#111111] transition-colors text-center truncate w-full">{{ site.title }}</span>
-            </a>
-          </div>
-          
-          <div v-if="filteredSites.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-400">
-            <p class="text-sm">暂无网站</p>
-          </div>
-        </main>
-      
-      <!-- Context Menu -->
-      <div 
-        v-if="showContextMenu" 
-        :style="{ top: `${contextMenuPos.y}px`, left: `${contextMenuPos.x}px` }"
-        class="fixed z-50 bg-white border border-gray-200 py-1 w-28"
-      >
-        <button @click="editSite" class="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 w-full text-left">
-          <Edit class="w-3.5 h-3.5" />
-          编辑
-        </button>
-        <button @click="deleteSite" class="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full text-left">
-          <Trash2 class="w-3.5 h-3.5" />
-          删除
-        </button>
-      </div>
+          <a 
+            v-for="site in filteredSites" 
+            :key="site.id" 
+            :href="site.url" 
+            target="_blank"
+            @contextmenu.prevent.stop="handleContextMenu($event, site)"
+            class="flex flex-col items-center gap-2 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+          >
+            <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+              <img 
+                v-if="site.icon" 
+                :src="site.icon" 
+                class="w-5 h-5 object-contain"
+                alt=""
+                @error="site.icon = ''"
+              />
+              <span v-else class="text-sm text-gray-400">
+                {{ getSiteInitial(site.title) }}
+              </span>
+            </div>
+            <p class="text-xs text-gray-600 truncate w-full text-center">{{ site.title }}</p>
+          </a>
+        </div>
+        
+        <div v-if="filteredSites.length === 0" class="py-12 text-center">
+          <p class="text-sm text-gray-300">暂无</p>
+        </div>
+      </main>
+
+      <!-- Footer -->
+      <footer class="text-center pt-12">
+      </footer>
     </div>
-    
-    <!-- Footer -->
-    <footer class="py-8 text-center text-xs text-gray-400">
-      <p>power by ssssshql</p>
-    </footer>
+
+    <!-- Context Menu -->
+    <div 
+      v-if="showContextMenu" 
+      :style="{ top: `${contextMenuPos.y}px`, left: `${contextMenuPos.x}px` }"
+      class="fixed z-50 bg-white border border-gray-100 rounded-lg py-1 w-24 shadow-sm"
+    >
+      <button @click="editSite" class="flex items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 w-full text-left transition-colors">
+        <Edit class="w-3 h-3" />
+        编辑
+      </button>
+      <button @click="deleteSite" class="flex items-center gap-2 px-3 py-2 text-xs text-red-500 hover:bg-gray-50 w-full text-left transition-colors">
+        <Trash2 class="w-3 h-3" />
+        删除
+      </button>
+    </div>
 
     <!-- Add Modal -->
     <transition
-      enter-active-class="transition duration-200 ease-out"
-      enter-from-class="opacity-0 scale-95"
-      enter-to-class="opacity-100 scale-100"
-      leave-active-class="transition duration-150 ease-in"
-      leave-from-class="opacity-100 scale-100"
-      leave-to-class="opacity-0 scale-95"
+      enter-active-class="transition ease-out duration-150"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition ease-in duration-100"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
     >
       <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center px-4">
-        <div class="absolute inset-0 bg-black/20 backdrop-blur-sm" @click="showAddModal = false"></div>
+        <div class="absolute inset-0 bg-black/5" @click="showAddModal = false"></div>
         
-        <div class="bg-white w-full max-w-lg border border-gray-200 relative z-10">
-          <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 class="text-lg font-bold text-gray-900">{{ newSite.id ? '编辑网站' : '添加网站' }}</h2>
-            <button @click="showAddModal = false" class="p-1 text-gray-400 hover:text-black hover:bg-gray-100 transition-all">
-              <X class="h-5 w-5" />
+        <div class="bg-white w-full max-w-xs rounded-lg shadow-lg relative z-10">
+          <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-sm font-medium text-gray-800">{{ newSite.id ? '编辑' : '添加' }}</h2>
+            <button @click="showAddModal = false" class="text-gray-300 hover:text-gray-500">
+              <X class="h-4 w-4" />
             </button>
           </div>
 
-          <form @submit.prevent="addSite" class="p-6 space-y-5">
-            <div class="space-y-1.5">
-              <label class="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                <Globe class="w-3.5 h-3.5" />
-                网址链接
-              </label>
-              <div class="relative group">
-                <input 
-                  v-model="newSite.url" 
-                  type="url" 
-                  required 
-                  placeholder="https://example.com"
-                  class="w-full h-11 pl-4 pr-10 bg-gray-50 border border-gray-200 text-sm focus:bg-white focus:border-gray-300 focus:ring-0 transition-all outline-none placeholder-gray-400" 
-                />
-                <div class="absolute right-3 top-1/2 -translate-y-1/2">
-                  <Loader2 v-if="isFetchingIcon" class="w-4 h-4 text-black animate-spin" />
-                </div>
-              </div>
+          <form @submit.prevent="addSite" class="p-4 space-y-3">
+            <div>
+              <input 
+                v-model="newSite.url" 
+                type="url" 
+                required 
+                placeholder="网址"
+                class="w-full h-9 px-3 bg-gray-50 border-0 rounded text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:bg-gray-100 transition-colors" 
+              />
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-              <div class="space-y-1.5">
-                <label class="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  <Type class="w-3.5 h-3.5" />
-                  标题
-                </label>
-                <input 
-                  v-model="newSite.title" 
-                  required 
-                  placeholder="网站名称"
-                  class="w-full h-11 px-4 bg-gray-50 border border-gray-200 text-sm focus:bg-white focus:border-gray-300 focus:ring-0 transition-all outline-none placeholder-gray-400" 
-                />
-              </div>
-              
-              <div class="space-y-1.5">
-                <label class="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  <LayoutGrid class="w-3.5 h-3.5" />
-                  分类
-                </label>
-                <div class="relative">
-                  <input 
-                    v-model="newSite.category" 
-                    required 
-                    list="category-options" 
-                    placeholder="选择分类..."
-                    class="w-full h-11 px-4 bg-gray-50 border border-gray-200 text-sm focus:bg-white focus:border-gray-300 focus:ring-0 transition-all outline-none placeholder-gray-400" 
-                  />
-                  <datalist id="category-options">
-                    <option v-for="cat in defaultCategories" :key="cat" :value="cat"></option>
-                  </datalist>
-                </div>
-              </div>
+            <div class="grid grid-cols-2 gap-2">
+              <input 
+                v-model="newSite.title" 
+                required 
+                placeholder="标题"
+                class="h-9 px-3 bg-gray-50 border-0 rounded text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:bg-gray-100 transition-colors" 
+              />
+              <select 
+                v-model="newSite.category" 
+                required 
+                class="h-9 px-3 bg-gray-50 border-0 rounded text-sm text-gray-700 focus:outline-none focus:bg-gray-100 transition-colors"
+              >
+                <option v-for="cat in defaultCategories" :key="cat" :value="cat">{{ cat }}</option>
+              </select>
             </div>
 
-            <div class="space-y-1.5">
-              <label class="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                <ImageIcon class="w-3.5 h-3.5" />
-                图标 (可选)
-              </label>
-              <div class="flex gap-3">
-                <div class="w-11 h-11 shrink-0 bg-gray-50 border border-gray-200 flex items-center justify-center overflow-hidden relative group cursor-pointer" @click="triggerFileUpload">
-                  <img 
-                    v-if="newSite.icon" 
-                    :src="newSite.icon" 
-                    class="w-6 h-6 object-contain"
-                    @error="newSite.icon = ''" 
-                  />
-                  <ImageIcon v-else class="w-5 h-5 text-gray-300" />
-                  <div class="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Upload class="w-4 h-4 text-white" />
-                  </div>
-                </div>
-                
-                <input 
-                  v-model="newSite.icon" 
-                  placeholder="自动获取或粘贴图片链接"
-                  class="flex-1 h-11 px-4 bg-gray-50 border border-gray-200 text-sm focus:bg-white focus:border-gray-300 focus:ring-0 transition-all outline-none placeholder-gray-400" 
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
+                <img 
+                  v-if="newSite.icon" 
+                  :src="newSite.icon" 
+                  class="w-6 h-6 object-contain"
+                  alt=""
+                  @error="newSite.icon = ''"
                 />
-                
-                <input 
-                  type="file" 
-                  ref="fileInput" 
-                  accept="image/*" 
-                  class="hidden" 
-                  @change="handleFileUpload" 
-                />
+                <span v-else class="text-xs text-gray-300">?</span>
               </div>
-              <p class="text-[10px] text-gray-400 pl-1">支持自动获取或点击图标上传本地图片。</p>
+              <input 
+                v-model="newSite.icon" 
+                placeholder="图标链接"
+                class="flex-1 h-9 px-3 bg-gray-50 border-0 rounded text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:bg-gray-100 transition-colors" 
+              />
             </div>
 
-            <div class="pt-2 flex items-center justify-end gap-3">
+            <div class="flex justify-end gap-2 pt-1">
               <button 
                 type="button" 
                 @click="showAddModal = false" 
-                class="px-5 h-11 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-black transition-colors"
+                class="px-3 h-8 text-xs text-gray-400 hover:text-gray-600 transition-colors"
               >
                 取消
               </button>
               <button 
                 type="submit" 
-                class="px-6 h-11 bg-[#111111] text-white text-sm font-medium hover:bg-black transition-colors"
+                class="px-4 h-8 bg-gray-900 text-white text-xs rounded hover:bg-gray-800 transition-colors"
               >
-                {{ newSite.id ? '更新' : '保存' }}
+                保存
               </button>
             </div>
           </form>
@@ -403,3 +354,19 @@ onUnmounted(() => {
     </transition>
   </div>
 </template>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');
+
+* {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+input:focus {
+  outline: none;
+}
+</style>
