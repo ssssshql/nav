@@ -226,7 +226,7 @@ onUnmounted(() => {
 
 <template>
   <div class="min-h-screen bg-white" @contextmenu.prevent>
-    <div class="max-w-4xl mx-auto px-6 py-12">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
       <!-- Header -->
       <header class="flex items-center justify-between mb-8">
         <h1 class="text-lg font-medium text-gray-900">Quick</h1>
@@ -293,7 +293,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Categories -->
-      <div class="mb-8 flex gap-3 text-sm">
+      <div class="mb-8 flex gap-3 text-sm overflow-x-auto pb-2">
         <button
           v-for="cat in categories"
           :key="cat"
@@ -303,7 +303,7 @@ onUnmounted(() => {
               ? 'text-gray-900' 
               : 'text-gray-400 hover:text-gray-600'
           ]"
-          class="transition-colors"
+          class="transition-colors whitespace-nowrap"
         >
           {{ cat }}
         </button>
@@ -311,16 +311,16 @@ onUnmounted(() => {
 
       <!-- Sites Grid -->
       <main @click="closeContextMenu" class="mb-12">
-        <div class="grid grid-cols-6 gap-4">
+        <div class="grid sm:grid-cols-6 grid-cols-2 gap-3 sm:gap-4">
           <a 
             v-for="site in filteredSites" 
             :key="site.id" 
             :href="site.url" 
             target="_blank"
             @contextmenu.prevent.stop="handleContextMenu($event, site)"
-            class="flex flex-col items-center gap-2 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+            class="flex sm:flex-col items-center gap-2 p-2 sm:p-3 hover:bg-gray-50 rounded-lg transition-colors"
           >
-            <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+            <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
               <img 
                 v-if="site.icon" 
                 :src="site.icon" 
@@ -332,7 +332,8 @@ onUnmounted(() => {
                 {{ getSiteInitial(site.title) }}
               </span>
             </div>
-            <p class="text-xs text-gray-600 truncate w-full text-center">{{ site.title }}</p>
+            <p class="text-xs text-gray-600 truncate w-full text-center hidden sm:block">{{ site.title }}</p>
+            <p class="text-xs text-gray-600 truncate flex-1 sm:hidden">{{ site.title }}</p>
           </a>
         </div>
         
@@ -342,8 +343,8 @@ onUnmounted(() => {
       </main>
 
       <!-- Footer -->
-      <footer class="fixed bottom-6 right-6 text-right">
-        <p v-if="hitokoto" class="text-xs text-gray-400 italic">
+      <footer class="fixed sm:bottom-6 sm:right-6 right-4 bottom-4 text-right max-w-[60vw]">
+        <p v-if="hitokoto" class="text-xs text-gray-400 italic truncate">
           {{ hitokotoDisplay }}
           <span v-if="hitokoto.fromWho || hitokoto.from" class="text-gray-300">
             — {{ hitokoto.fromWho || '' }}{{ hitokoto.fromWho && hitokoto.from ? ' / ' : '' }}{{ hitokoto.from || '' }}
