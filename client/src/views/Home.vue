@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import axios from 'axios'
 import { useAuthStore } from '../stores/auth'
-import { Search, Plus, Trash2, X, Loader2, Image as ImageIcon, Upload, Edit, LogOut } from 'lucide-vue-next'
+import { Search, Plus, Trash2, X, Loader2, Image as ImageIcon, Upload, Edit, LogOut, Download, UploadCloud } from 'lucide-vue-next'
 
 const auth = useAuthStore()
 const sites = ref([])
@@ -19,6 +19,10 @@ const newSite = ref({ title: '', url: '', icon: '', category: '日常' })
 const isFetchingIcon = ref(false)
 const fileInput = ref(null)
 const showUserMenu = ref(false)
+const importInput = ref(null)
+const hitokoto = ref('')
+const hitokotoDisplay = ref('')
+let typeTimer = null
 
 const showContextMenu = ref(false)
 const contextMenuPos = ref({ x: 0, y: 0 })
@@ -34,6 +38,32 @@ const fetchSites = async () => {
     sites.value = data
   } catch (e) {
     console.error(e)
+  }
+}
+
+const fetchHitokoto = async () => {
+  const type = () => {
+    if (typeTimer) clearInterval(typeTimer)
+    hitokotoDisplay.value = ''
+    
+    const typeText = hitokoto.value.text
+    let i = 0
+    typeTimer = setInterval(() => {
+      hitokotoDisplay.value += typeText.charAt(i)
+      i++
+      if (i >= typeText.length) {
+        clearInterval(typeTimer)
+        setTimeout(type, 2000)
+      }
+    }, 100)
+  }
+  
+  try {
+    const { data } = await axios.get('https://hitokoto.yealqp.cn/')
+    hitokoto.value = { text: data.hitokoto, from: data.from, fromWho: data.from_who }
+    type()
+  } catch (e) {
+    // ignore
   }
 }
 
@@ -91,6 +121,53 @@ const addSite = async () => {
   fetchSites()
 }
 
+const exportSites = () => {
+  const data = JSON.stringify(sites.value, null, 2)
+  const blob = new Blob([data], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `nav-sites-${new Date().toISOString().slice(0, 10)}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const triggerImport = () => {
+  importInput.value.click()
+}
+
+const handleImport = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  try {
+    const text = await file.text()
+    const data = JSON.parse(text)
+    if (!Array.isArray(data)) {
+      alert('文件格式错误')
+      return
+    }
+    
+    for (const site of data) {
+      if (site.title && site.url) {
+        await axios.post('/api/sites', {
+          title: site.title,
+          url: site.url,
+          icon: site.icon || '',
+          category: site.category || '日常'
+        })
+      }
+    }
+    
+    fetchSites()
+    alert('导入成功')
+  } catch (e) {
+    alert('导入失败: ' + e.message)
+  }
+  
+  event.target.value = ''
+}
+
 const deleteSite = async () => {
   if (!selectedSite.value) return
   if (confirm('确认删除?')) {
@@ -138,6 +215,7 @@ const onGlobalClick = () => {
 
 onMounted(() => {
   fetchSites()
+  fetchHitokoto()
   document.addEventListener('click', onGlobalClick)
 })
 
@@ -155,12 +233,20 @@ onUnmounted(() => {
         
         <template v-if="auth.isLoggedIn">
           <div class="relative">
-            <button 
+<button 
               @click.stop="showUserMenu = !showUserMenu" 
               class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-sm text-gray-600"
             >
               {{ auth.username?.charAt(0).toUpperCase() || 'U' }}
             </button>
+            
+            <input 
+              ref="importInput"
+              type="file"
+              accept=".json"
+              class="hidden"
+              @change="handleImport"
+            />
             
             <transition
               enter-active-class="transition ease-out duration-100"
@@ -170,10 +256,18 @@ onUnmounted(() => {
               leave-from-class="opacity-100"
               leave-to-class="opacity-0"
             >
-              <div v-if="showUserMenu" class="absolute right-0 top-10 mt-1 w-32 bg-white border border-gray-100 rounded-lg py-1 z-50 shadow-sm">
+<div v-if="showUserMenu" class="absolute right-0 top-10 mt-1 w-32 bg-white border border-gray-100 rounded-lg py-1 z-50 shadow-sm">
                 <button @click="skipFetch = false; newSite = { title: '', url: '', icon: '', category: '日常' }; showAddModal = true; showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors">
                   <Plus class="w-3 h-3" />
                   添加
+                </button>
+                <button @click="exportSites(); showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors">
+                  <Download class="w-3 h-3" />
+                  导出
+                </button>
+                <button @click="triggerImport(); showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors">
+                  <UploadCloud class="w-3 h-3" />
+                  导入
                 </button>
                 <button @click="auth.logout(); showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-red-500 hover:bg-gray-50 transition-colors">
                   <LogOut class="w-3 h-3" />
@@ -199,7 +293,7 @@ onUnmounted(() => {
       </div>
 
       <!-- Categories -->
-      <div class="mb-8 flex gap-2 text-xs">
+      <div class="mb-8 flex gap-3 text-sm">
         <button
           v-for="cat in categories"
           :key="cat"
@@ -248,7 +342,13 @@ onUnmounted(() => {
       </main>
 
       <!-- Footer -->
-      <footer class="text-center pt-12">
+      <footer class="fixed bottom-6 right-6 text-right">
+        <p v-if="hitokoto" class="text-xs text-gray-400 italic">
+          {{ hitokotoDisplay }}
+          <span v-if="hitokoto.fromWho || hitokoto.from" class="text-gray-300">
+            — {{ hitokoto.fromWho || '' }}{{ hitokoto.fromWho && hitokoto.from ? ' / ' : '' }}{{ hitokoto.from || '' }}
+          </span>
+        </p>
       </footer>
     </div>
 
