@@ -15,23 +15,23 @@ const router = createRouter({
 
 // Check setup status
 router.beforeEach(async (to, from, next) => {
-  if (to.path === '/setup') {
-    next();
-    return;
-  }
-  
-  // Skip check for login page to avoid loops if backend fails or something
-  // But strictly, we should check if setup is needed everywhere.
-  
   try {
     const { data } = await axios.get('/api/setup-status');
+    if (to.path === '/setup') {
+      if (!data.setupRequired) {
+        next('/');
+      } else {
+        next();
+      }
+      return;
+    }
+    
     if (data.setupRequired) {
       next('/setup');
     } else {
       next();
     }
   } catch (e) {
-    // If backend is down, we might just proceed or show error.
     next();
   }
 });
