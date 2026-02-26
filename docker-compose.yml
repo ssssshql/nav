@@ -1,0 +1,32 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: nav
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  server:
+    image: node:20
+    working_dir: /app/server
+    volumes:
+      - ./server:/app/server
+    ports:
+      - "3000:3000"
+    environment:
+      - JWT_SECRET=dev-secret
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: >
+      sh -c "npm install -g pnpm && pnpm install && node app.js"
+
+volumes:
+  mysql_data:
