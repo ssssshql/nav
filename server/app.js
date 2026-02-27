@@ -173,11 +173,20 @@ router.post('/api/setup', async (ctx) => {
     await sequelize.authenticate();
     await sequelize.sync({ alter: true });
     
-    // Generate 2FA secret
-    const secret = authenticator.generateSecret();
-    await SystemConfig.create({
-      twoFactorSecret: secret
-    });
+    // Check if SystemConfig already exists
+    const existingConfig = await SystemConfig.findOne();
+    let secret;
+    
+    if (existingConfig && existingConfig.twoFactorSecret) {
+      // Use existing secret
+      secret = existingConfig.twoFactorSecret;
+    } else {
+      // Generate new 2FA secret
+      secret = authenticator.generateSecret();
+      await SystemConfig.create({
+        twoFactorSecret: secret
+      });
+    }
 
     // Save config
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(dbConfig, null, 2));
