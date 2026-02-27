@@ -60,6 +60,8 @@ pnpm dev
 
 ## Docker 生产部署
 
+### 方式一：使用 Docker Compose（推荐）
+
 构建并启动所有服务（包含 MySQL、后端、前端静态资源托管）：
 
 ```bash
@@ -67,3 +69,20 @@ docker-compose up -d
 ```
 
 访问 `http://localhost:3000` 即可使用。
+
+### 方式二：单独使用 Docker（仅后端 + 前端）
+
+如果你有外部 MySQL，可以使用这种方式：
+
+```bash
+# 启动容器并持久化数据到 /projects/nav
+docker run -d --name nav \
+  -p 3000:3000 \
+  -v /projects/nav:/app/data \
+  --restart=always \
+  ssssshql/nav:latest
+```
+
+访问 `http://localhost:3000` 即可使用。
+
+**注意**：`/projects/nav` 目录会持久化数据库配置和 2FA secret，**请务必保留**，否则重启后需要重新配置。

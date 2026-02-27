@@ -17,11 +17,11 @@ const { initDB, getDB } = require('./models');
 const app = new Koa();
 const router = new Router();
 const SECRET_KEY = process.env.JWT_SECRET || 'your-secret-key-change-me';
-const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
+const CONFIG_FILE = '/app/data/config.json';
 
 // Ensure data dir exists
-if (!fs.existsSync(path.join(__dirname, 'data'))) {
-  fs.mkdirSync(path.join(__dirname, 'data'));
+if (!fs.existsSync('/app/data')) {
+  fs.mkdirSync('/app/data', { recursive: true });
 }
 
 // Try to load config and init DB

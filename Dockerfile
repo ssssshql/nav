@@ -22,5 +22,8 @@ COPY --from=builder /app/client/dist ./client/dist/
 # Set working directory to server so relative paths work
 WORKDIR /app/server
 
+# Create data directory for config
+RUN mkdir -p /app/data
+
 EXPOSE 3000
 CMD ["node", "app.js"]
