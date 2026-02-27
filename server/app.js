@@ -41,17 +41,18 @@ if (fs.existsSync(CONFIG_FILE)) {
 }
 
 app.use(cors());
-app.use(bodyParser());
+app.use(bodyParser({
+  jsonLimit: '50mb',
+  onerror: (err, ctx) => {
+    console.error('[bodyParser] Error:', err.message)
+    ctx.throw(400, 'invalid json')
+  }
+}));
 
 // Middleware to check auth
 const authMiddleware = async (ctx, next) => {
-  if (!isDBInitialized) {
-    ctx.status = 503;
-    ctx.body = { error: 'Service unavailable: Database not configured' };
-    return;
-  }
-  
-  const token = ctx.headers.authorization?.split(' ')[1];
+  const token = ctx.headers.authorization?.replace('Bearer ', '')
+  console.log('[auth] Token:', token ? 'present' : 'missing')
   if (!token) {
     ctx.status = 401;
     ctx.body = { error: 'Unauthorized' };
@@ -65,6 +66,7 @@ const authMiddleware = async (ctx, next) => {
     }
     await next();
   } catch (err) {
+    console.log('[auth] Error:', err.message)
     ctx.status = 401;
     ctx.body = { error: 'Invalid token' };
   }
@@ -73,6 +75,22 @@ const authMiddleware = async (ctx, next) => {
 // Helper to fetch favicon
 async function getFavicon(url) {
   try {
+    // Check if URL is already an icon file
+    const iconExtensions = ['.ico', '.png', '.svg', '.jpg', '.jpeg', '.gif', '.webp'];
+    const isIconUrl = iconExtensions.some(ext => url.toLowerCase().endsWith(ext));
+
+    if (isIconUrl) {
+      // Directly download the icon
+      const iconResponse = await axios.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 10000
+      });
+      const contentType = iconResponse.headers['content-type'] || 'image/png';
+      const base64 = Buffer.from(iconResponse.data).toString('base64');
+      return `data:${contentType};base64,${base64}`;
+    }
+
+    // Otherwise, fetch the website and parse for icon
     const response = await axios.get(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -111,14 +129,25 @@ async function getFavicon(url) {
       }
     }
 
+    // If no icon found in HTML, try default /favicon.ico
+    if (!iconUrl) {
+      const u = new URL(url);
+      iconUrl = `${u.origin}/favicon.ico`;
+    }
+
     console.log(`[getFavicon] ${url} -> ${iconUrl}`);
     
-    // Return null if no icon found (let frontend handle fallback)
-    if (!iconUrl) {
-      return null;
-    }
-    
-    return iconUrl;
+    // Download icon and convert to base64
+    const iconResponse = await axios.get(iconUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000
+    });
+
+    const contentType = iconResponse.headers['content-type'] || 'image/png';
+    const base64 = Buffer.from(iconResponse.data).toString('base64');
+    const base64Icon = `data:${contentType};base64,${base64}`;
+
+    return base64Icon;
   } catch (e) {
     console.error(`[getFavicon] Error: ${e.message}`);
     return null;
@@ -271,6 +300,7 @@ router.get('/api/sites', async (ctx) => {
 
 // Protected: Add Site
 router.post('/api/sites', authMiddleware, async (ctx) => {
+  console.log('[sites] Body:', ctx.request.body)
   const { Site } = getDB();
   const { title, url, icon, category } = ctx.request.body;
   if (!title || !url) {

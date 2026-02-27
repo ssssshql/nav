@@ -90,6 +90,30 @@ watch(() => newSite.value.url, (newUrl) => {
   }, 800)
 })
 
+// Watch icon field - convert URL to base64 when user enters an icon URL
+watch(() => newSite.value.icon, (newIcon) => {
+  if (!newIcon || newIcon.startsWith('data:')) return
+
+  const imageExtensions = ['.ico', '.png', '.svg', '.jpg', '.jpeg', '.gif', '.webp']
+  const isImageUrl = imageExtensions.some(ext => newIcon.toLowerCase().endsWith(ext)) || 
+                     newIcon.includes('/favicon') || 
+                     newIcon.includes('/icon')
+
+  if (!isImageUrl) return
+
+  if (fetchTimer) clearTimeout(fetchTimer)
+  fetchTimer = setTimeout(async () => {
+    try {
+      const { data } = await axios.post('/api/fetch-favicon', { url: newIcon })
+      if (data.icon) {
+        newSite.value.icon = data.icon
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, 500)
+})
+
 const triggerFileUpload = () => {
   fileInput.value.click()
 }

@@ -49,7 +49,7 @@ const initDB = async (config) => {
       allowNull: false
     },
     icon: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT('long'),
       allowNull: true
     },
     category: {
