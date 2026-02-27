@@ -2,7 +2,7 @@
 
 set -e
 
-IMAGE="sssshql/nav:latest"
+IMAGE="ssssshql/nav:latest"
 CONTAINER_NAME="nav"
 PORT=3000
 DATA_DIR="/projects/nav"
