@@ -17,11 +17,18 @@ const { initDB, getDB } = require('./models');
 const app = new Koa();
 const router = new Router();
 const SECRET_KEY = process.env.JWT_SECRET || 'your-secret-key-change-me';
-const CONFIG_FILE = '/app/data/config.json';
+const DATA_DIR = '/app/data';
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+const ICONS_DIR = path.join(DATA_DIR, 'icons');
 
-// Ensure data dir exists
-if (!fs.existsSync('/app/data')) {
-  fs.mkdirSync('/app/data', { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(ICONS_DIR)) {
+  fs.mkdirSync(ICONS_DIR, { recursive: true });
+}
+if (!fs.existsSync(ICONS_DIR)) {
+  fs.mkdirSync(ICONS_DIR, { recursive: true });
 }
 
 // Try to load config and init DB
@@ -49,6 +56,20 @@ app.use(bodyParser({
   }
 }));
 
+// Serve icons statically at /data/icons
+app.use(async (ctx, next) => {
+  if (ctx.path.startsWith('/data/icons/')) {
+    const filename = ctx.path.replace('/data/icons/', '');
+    const filepath = path.join(ICONS_DIR, filename);
+    if (fs.existsSync(filepath)) {
+      ctx.type = path.extname(filepath);
+      ctx.body = fs.createReadStream(filepath);
+      return;
+    }
+  }
+  await next();
+});
+
 // Middleware to check auth
 const authMiddleware = async (ctx, next) => {
   const token = ctx.headers.authorization?.replace('Bearer ', '')
@@ -72,35 +93,25 @@ const authMiddleware = async (ctx, next) => {
   }
 };
 
-// Helper to fetch favicon
-async function getFavicon(url) {
+// Helper to fetch favicon from website URL
+async function getFaviconFromWebsite(websiteUrl, ctx) {
   try {
-    // Check if URL is already an icon file
-    const iconExtensions = ['.ico', '.png', '.svg', '.jpg', '.jpeg', '.gif', '.webp'];
-    const isIconUrl = iconExtensions.some(ext => url.toLowerCase().endsWith(ext));
+    // Fetch the website
+    const response = await axios.get(websiteUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 10000,
+      validateStatus: () => true
+    });
 
-    if (isIconUrl) {
-      // Directly download the icon
-      const iconResponse = await axios.get(url, {
-        responseType: 'arraybuffer',
-        timeout: 10000
-      });
-      const contentType = iconResponse.headers['content-type'] || 'image/png';
-      const base64 = Buffer.from(iconResponse.data).toString('base64');
-      return `data:${contentType};base64,${base64}`;
+    if (response.status !== 200) {
+      return null;
     }
 
-    // Otherwise, fetch the website and parse for icon
-    const response = await axios.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      },
-      timeout: 10000
-    });
     const html = response.data;
     const $ = cheerio.load(html);
     
-    // Check for all icon link types
     const iconSelectors = [
       'link[rel="icon"]',
       'link[rel="shortcut icon"]', 
@@ -119,40 +130,69 @@ async function getFavicon(url) {
 
     // Handle relative URLs
     if (iconUrl && !iconUrl.startsWith('http')) {
-      const u = new URL(url);
+      const u = new URL(websiteUrl);
       if (iconUrl.startsWith('/')) {
-        // Absolute path like /assets/img/favicon.svg
         iconUrl = `${u.origin}${iconUrl}`;
       } else {
-        // Relative path
         iconUrl = new URL(iconUrl, u.origin).href;
       }
     }
 
-    // If no icon found in HTML, try default /favicon.ico
+    // If no icon found, try default favicon.ico
     if (!iconUrl) {
-      const u = new URL(url);
+      const u = new URL(websiteUrl);
       iconUrl = `${u.origin}/favicon.ico`;
     }
 
-    console.log(`[getFavicon] ${url} -> ${iconUrl}`);
-    
-    // Download icon and convert to base64
+    console.log(`[getFavicon] ${websiteUrl} -> ${iconUrl}`);
+
+    // Download icon
     const iconResponse = await axios.get(iconUrl, {
       responseType: 'arraybuffer',
-      timeout: 10000
+      timeout: 10000,
+      validateStatus: () => true
     });
 
-    const contentType = iconResponse.headers['content-type'] || 'image/png';
-    const base64 = Buffer.from(iconResponse.data).toString('base64');
-    const base64Icon = `data:${contentType};base64,${base64}`;
+    if (iconResponse.status !== 200) {
+      return null;
+    }
 
-    return base64Icon;
+    const contentType = iconResponse.headers['content-type'] || 'image/png';
+    // Extract extension, handle special cases like svg+xml
+    let ext = contentType.split('/')[1]?.split(';')[0] || 'png';
+    if (ext.includes('+')) {
+      ext = ext.split('+')[0]; // svg+xml -> svg
+    }
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const filepath = path.join(ICONS_DIR, filename);
+
+    fs.writeFileSync(filepath, iconResponse.data);
+    
+    // Return relative path
+    return `/data/icons/${filename}`;
   } catch (e) {
-    console.error(`[getFavicon] Error: ${e.message}`);
+    console.error(`[getFavicon] Error: ${e.message}, URL: ${websiteUrl}`);
     return null;
   }
 }
+
+// Public: Fetch Favicon from website URL
+router.post('/api/fetch-favicon', async (ctx) => {
+  const { url } = ctx.request.body;
+  if (!url) {
+    ctx.status = 400;
+    ctx.body = { error: 'URL required' };
+    return;
+  }
+  try {
+    const icon = await getFaviconFromWebsite(url, ctx);
+    ctx.body = { icon };
+  } catch (e) {
+    console.error('[fetch-favicon] Error:', e.message)
+    ctx.status = 500
+    ctx.body = { error: e.message }
+  }
+});
 
 // Check if setup is required
 router.get('/api/setup-status', async (ctx) => {
@@ -270,17 +310,96 @@ router.post('/api/login', async (ctx) => {
   ctx.body = { token: jwtToken };
 });
 
-// Public: Fetch Favicon
-router.post('/api/fetch-favicon', async (ctx) => {
-  const { url } = ctx.request.body;
-  if (!url) {
+// Public: Cache external icon URL to local
+router.post('/api/cache-icon', async (ctx) => {
+  const { iconUrl } = ctx.request.body;
+  if (!iconUrl) {
     ctx.status = 400;
-    ctx.body = { error: 'URL required' };
+    ctx.body = { error: 'Icon URL required' };
     return;
   }
-  const icon = await getFavicon(url);
-  ctx.body = { icon };
+  
+  // Skip if already a local path
+  if (iconUrl.startsWith('/data/')) {
+    ctx.body = { icon: iconUrl };
+    return;
+  }
+  
+  try {
+    // Download the icon
+    const iconResponse = await axios.get(iconUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      validateStatus: () => true
+    });
+
+    if (iconResponse.status !== 200) {
+      ctx.status = 400;
+      ctx.body = { error: 'Failed to download icon' };
+      return;
+    }
+
+    const contentType = iconResponse.headers['content-type'] || 'image/png';
+    // Extract extension, handle special cases like svg+xml
+    let ext = contentType.split('/')[1]?.split(';')[0] || 'png';
+    if (ext.includes('+')) {
+      ext = ext.split('+')[0]; // svg+xml -> svg
+    }
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const filepath = path.join(ICONS_DIR, filename);
+
+    fs.writeFileSync(filepath, iconResponse.data);
+    
+    ctx.body = { icon: `/data/icons/${filename}` };
+  } catch (e) {
+    console.error('[cache-icon] Error:', e.message);
+    ctx.status = 500;
+    ctx.body = { error: 'Failed to cache icon: ' + e.message };
+  }
 });
+
+// Protected: Upload Icon
+const multer = require('koa-multer');
+const storage = multer.diskStorage({
+  destination: ICONS_DIR,
+  filename: (ctx, file, cb) => {
+    const ext = file.originalname.split('.').pop() || 'png';
+    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
+  }
+});
+const upload = multer({ storage });
+
+router.post('/api/upload-icon', authMiddleware, upload.single('icon'), async (ctx) => {
+  if (!ctx.file) {
+    ctx.status = 400;
+    ctx.body = { error: 'No file uploaded' };
+    return;
+  }
+  const iconUrl = `/data/icons/${ctx.file.filename}`;
+  ctx.body = { icon: iconUrl };
+});
+
+// Migrate base64 icon to file
+async function migrateIcon(site) {
+  if (!site.icon || !site.icon.startsWith('data:')) return site.icon;
+  
+  try {
+    const base64Data = site.icon.split(',')[1];
+    const buffer = Buffer.from(base64Data, 'base64');
+    const ext = site.icon.includes('image/svg') ? 'svg' : 'png';
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const filepath = path.join(ICONS_DIR, filename);
+    
+    fs.writeFileSync(filepath, buffer);
+    
+    await site.update({ icon: `/data/icons/${filename}` });
+    console.log(`[migrate] Migrated icon for site: ${site.title}`);
+    return `/data/icons/${filename}`;
+  } catch (e) {
+    console.error(`[migrate] Error: ${e.message}`);
+    return site.icon;
+  }
+}
 
 // Public: Get Sites
 router.get('/api/sites', async (ctx) => {
@@ -291,6 +410,12 @@ router.get('/api/sites', async (ctx) => {
   const { Site } = getDB();
   try {
     const sites = await Site.findAll();
+    // Migrate base64 icons to files
+    for (const site of sites) {
+      if (site.icon && site.icon.startsWith('data:')) {
+        site.icon = await migrateIcon(site);
+      }
+    }
     ctx.body = sites;
   } catch (e) {
     ctx.status = 500;

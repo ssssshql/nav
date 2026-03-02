@@ -28,6 +28,14 @@ const showContextMenu = ref(false)
 const contextMenuPos = ref({ x: 0, y: 0 })
 const selectedSite = ref(null)
 
+const getIconUrl = (icon) => {
+  if (!icon) return ''
+  if (icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:')) {
+    return icon
+  }
+  return '' + icon
+}
+
 const getSiteInitial = (title) => {
   return title ? title.charAt(0).toUpperCase() : '?'
 }
@@ -68,57 +76,49 @@ const fetchHitokoto = async () => {
 }
 
 let fetchTimer = null
-let skipFetch = false
-watch(() => newSite.value.url, (newUrl) => {
+const resetNewSite = () => {
+  newSite.value = { title: '', url: '', icon: '', category: '日常' }
+  iconLoadError.value = false
+}
+const iconLoadError = ref(false)
+const iconPreviewError = ref(false)
+
+watch(() => newSite.value?.url, (newUrl) => {
+  console.log('[watch url]', newUrl)
   if (!newUrl || !newUrl.startsWith('http')) return
   
-  if (skipFetch || newSite.value.icon) return
+  // 如果已有本地路径的图标，不需要重新获取
+  if (newSite.value.icon && newSite.value.icon.startsWith('/data/')) return
   
   if (fetchTimer) clearTimeout(fetchTimer)
   fetchTimer = setTimeout(async () => {
     isFetchingIcon.value = true
+    iconPreviewError.value = false
     try {
+      console.log('[fetch-favicon] calling API with', newUrl)
       const { data } = await axios.post('/api/fetch-favicon', { url: newUrl })
+      console.log('[fetch-favicon] response', data)
       if (data.icon) {
         newSite.value.icon = data.icon
+      } else {
+        // 无法获取图标，清空让用户手动输入
+        newSite.value.icon = ''
       }
     } catch (e) {
-      // ignore
+      console.error('[fetch-favicon] error', e)
+      // 获取失败，清空让用户手动输入
+      newSite.value.icon = ''
     } finally {
       isFetchingIcon.value = false
     }
   }, 800)
 })
 
-// Watch icon field - convert URL to base64 when user enters an icon URL
-watch(() => newSite.value.icon, (newIcon) => {
-  if (!newIcon || newIcon.startsWith('data:')) return
-
-  const imageExtensions = ['.ico', '.png', '.svg', '.jpg', '.jpeg', '.gif', '.webp']
-  const isImageUrl = imageExtensions.some(ext => newIcon.toLowerCase().endsWith(ext)) || 
-                     newIcon.includes('/favicon') || 
-                     newIcon.includes('/icon')
-
-  if (!isImageUrl) return
-
-  if (fetchTimer) clearTimeout(fetchTimer)
-  fetchTimer = setTimeout(async () => {
-    try {
-      const { data } = await axios.post('/api/fetch-favicon', { url: newIcon })
-      if (data.icon) {
-        newSite.value.icon = data.icon
-      }
-    } catch (e) {
-      // ignore
-    }
-  }, 500)
-})
-
 const triggerFileUpload = () => {
   fileInput.value.click()
 }
 
-const handleFileUpload = (event) => {
+const handleFileUpload = async (event) => {
   const file = event.target.files[0]
   if (!file) return
   
@@ -127,21 +127,45 @@ const handleFileUpload = (event) => {
     return
   }
 
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    newSite.value.icon = e.target.result
+  const formData = new FormData()
+  formData.append('icon', file)
+  
+  try {
+    const { data } = await axios.post('/api/upload-icon', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    if (data.icon) {
+      newSite.value.icon = data.icon
+    }
+  } catch (e) {
+    alert('上传图标失败')
   }
-  reader.readAsDataURL(file)
 }
 
 const addSite = async () => {
-  if (newSite.value.id) {
-    await axios.put(`/api/sites/${newSite.value.id}`, newSite.value)
+  const siteData = { ...newSite.value }
+  
+  // 如果图标是外部URL，先缓存到本地
+  if (siteData.icon && (siteData.icon.startsWith('http://') || siteData.icon.startsWith('https://'))) {
+    try {
+      const { data } = await axios.post('/api/cache-icon', { iconUrl: siteData.icon })
+      if (data.icon) {
+        siteData.icon = data.icon
+      }
+    } catch (e) {
+      console.error('[cache-icon] error', e)
+      // 缓存失败仍然保存原URL
+    }
+  }
+  
+  if (siteData.id) {
+    await axios.put(`/api/sites/${siteData.id}`, siteData)
   } else {
-    await axios.post('/api/sites', newSite.value)
+    await axios.post('/api/sites', siteData)
   }
   showAddModal.value = false
   newSite.value = { title: '', url: '', icon: '', category: '日常' }
+  iconLoadError.value = false
   fetchSites()
 }
 
@@ -203,8 +227,9 @@ const deleteSite = async () => {
 
 const editSite = () => {
   if (!selectedSite.value) return
-  skipFetch = true
   newSite.value = { ...selectedSite.value }
+  iconLoadError.value = false
+  iconPreviewError.value = false
   showAddModal.value = true
   closeContextMenu()
 }
@@ -281,7 +306,7 @@ onUnmounted(() => {
               leave-to-class="opacity-0"
             >
 <div v-if="showUserMenu" class="absolute right-0 top-10 mt-1 w-32 bg-white border border-gray-100 rounded-lg py-1 z-50 shadow-sm">
-                <button @click="skipFetch = false; newSite = { title: '', url: '', icon: '', category: '日常' }; showAddModal = true; showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors">
+                <button @click="resetNewSite(); showAddModal = true; showUserMenu = false" class="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors">
                   <Plus class="w-3 h-3" />
                   添加
                 </button>
@@ -347,7 +372,7 @@ onUnmounted(() => {
             <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
               <img 
                 v-if="site.icon" 
-                :src="site.icon" 
+                :src="getIconUrl(site.icon)" 
                 class="w-5 h-5 object-contain"
                 alt=""
                 @error="site.icon = ''"
@@ -403,12 +428,12 @@ onUnmounted(() => {
       leave-to-class="opacity-0"
     >
       <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center px-4">
-        <div class="absolute inset-0 bg-black/5" @click="showAddModal = false"></div>
+        <div class="absolute inset-0 bg-black/5" @click="showAddModal = false; iconLoadError = false; iconPreviewError = false"></div>
         
         <div class="bg-white w-full max-w-xs rounded-lg shadow-lg relative z-10">
           <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-sm font-medium text-gray-800">{{ newSite.id ? '编辑' : '添加' }}</h2>
-            <button @click="showAddModal = false" class="text-gray-300 hover:text-gray-500">
+            <button @click="showAddModal = false; iconLoadError = false; iconPreviewError = false" class="text-gray-300 hover:text-gray-500">
               <X class="h-4 w-4" />
             </button>
           </div>
@@ -441,27 +466,46 @@ onUnmounted(() => {
             </div>
 
             <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0">
-                <img 
-                  v-if="newSite.icon" 
-                  :src="newSite.icon" 
-                  class="w-6 h-6 object-contain"
-                  alt=""
-                  @error="newSite.icon = ''"
-                />
-                <span v-else class="text-xs text-gray-300">?</span>
+              <div class="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center shrink-0 relative">
+                <Loader2 v-if="isFetchingIcon" class="w-4 h-4 text-gray-400 animate-spin" />
+                <template v-else>
+                  <img 
+                    v-if="newSite.icon && !iconPreviewError" 
+                    :src="getIconUrl(newSite.icon)" 
+                    class="w-6 h-6 object-contain"
+                    alt=""
+                    @error="iconPreviewError = true"
+                  />
+                  <span v-else class="text-xs text-gray-300">?</span>
+                </template>
               </div>
-              <input 
-                v-model="newSite.icon" 
-                placeholder="图标链接"
-                class="flex-1 h-9 px-3 bg-gray-50 border-0 rounded text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:bg-gray-100 transition-colors" 
-              />
+              <!-- 获取中不显示输入框 -->
+              <template v-if="!isFetchingIcon">
+                <!-- 只有当图标为空或不是本地路径时才显示输入框 -->
+                <div v-if="!newSite.icon || !newSite.icon.startsWith('/data/')" class="flex-1">
+                  <input 
+                    v-model="newSite.icon" 
+                    @input="iconPreviewError = false"
+                    placeholder="输入图标链接"
+                    class="w-full h-9 px-3 bg-gray-50 border-0 rounded text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:bg-gray-100 transition-colors" 
+                  />
+                </div>
+                <!-- 如果已有本地图标，显示更换按钮 -->
+                <button 
+                  v-else-if="newSite.icon && newSite.icon.startsWith('/data/')"
+                  type="button"
+                  @click="newSite.icon = ''"
+                  class="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  更换
+                </button>
+              </template>
             </div>
 
             <div class="flex justify-end gap-2 pt-1">
               <button 
                 type="button" 
-                @click="showAddModal = false" 
+                @click="showAddModal = false; iconLoadError = false; iconPreviewError = false" 
                 class="px-3 h-8 text-xs text-gray-400 hover:text-gray-600 transition-colors"
               >
                 取消
