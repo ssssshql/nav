@@ -262,7 +262,8 @@ const onGlobalClick = () => {
   if (showUserMenu.value) showUserMenu.value = false
 }
 
-onMounted(() => {
+onMounted(async () => {
+  await auth.checkAuth()
   fetchSites()
   fetchHitokoto()
   document.addEventListener('click', onGlobalClick)

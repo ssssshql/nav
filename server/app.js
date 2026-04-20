@@ -33,8 +33,9 @@ if (!fs.existsSync(ICONS_DIR)) {
 
 // Try to load config and init DB
 let isDBInitialized = false;
+let dbInitPromise = null;
 if (fs.existsSync(CONFIG_FILE)) {
-  (async () => {
+  dbInitPromise = (async () => {
     try {
       const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       await initDB(config);
@@ -196,6 +197,10 @@ router.post('/api/fetch-favicon', async (ctx) => {
 
 // Check if setup is required
 router.get('/api/setup-status', async (ctx) => {
+  // 等待 DB 初始化完成（如有）
+  if (dbInitPromise) {
+    await dbInitPromise;
+  }
   if (!isDBInitialized) {
     ctx.body = { setupRequired: true, reason: 'db_not_configured' };
     return;
@@ -308,6 +313,11 @@ router.post('/api/login', async (ctx) => {
 
   const jwtToken = jwt.sign({ role: 'admin' }, SECRET_KEY, { expiresIn: '7d' });
   ctx.body = { token: jwtToken };
+});
+
+// Protected: Get current user info (validates token)
+router.get('/api/user-info', authMiddleware, async (ctx) => {
+  ctx.body = { role: 'admin' };
 });
 
 // Public: Cache external icon URL to local
