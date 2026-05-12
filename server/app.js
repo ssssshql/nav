@@ -31,22 +31,31 @@ if (!fs.existsSync(ICONS_DIR)) {
   fs.mkdirSync(ICONS_DIR, { recursive: true });
 }
 
-// Try to load config and init DB
+// Try to load config and init DB (with retry for container startup timing)
 let isDBInitialized = false;
 let dbInitPromise = null;
-if (fs.existsSync(CONFIG_FILE)) {
-  dbInitPromise = (async () => {
+
+async function tryInitDB(retries = 10, delay = 3000) {
+  if (!fs.existsSync(CONFIG_FILE)) return;
+  const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+  for (let i = 0; i < retries; i++) {
     try {
-      const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       await initDB(config);
-      await getDB().sequelize.sync({ alter: true }); // Sync schema
+      await getDB().sequelize.sync({ alter: true });
       console.log('Database connected and synced');
       isDBInitialized = true;
+      return;
     } catch (e) {
-      console.error('Failed to load config or connect DB:', e);
+      console.error(`DB init attempt ${i + 1}/${retries} failed: ${e.message}`);
+      if (i < retries - 1) {
+        await new Promise(r => setTimeout(r, delay));
+      }
     }
-  })();
+  }
+  console.error('All DB init attempts failed. App will stay in setup mode.');
 }
+
+dbInitPromise = tryInitDB();
 
 app.use(cors());
 app.use(bodyParser({
