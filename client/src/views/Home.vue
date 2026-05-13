@@ -274,6 +274,7 @@ onUnmounted(() => {
 <template>
   <div class="page-shell">
     <div class="texture-overlay"></div>
+    <div class="bg-pattern"></div>
 
     <header class="top-bar">
       <div class="brand-group">
@@ -505,6 +506,18 @@ input:focus, select:focus {
   position: fixed;
   inset: 0;
   background: url("data:image/svg+xml,%3Csvg viewBox='0 0 300 300' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-pattern {
+  position: fixed;
+  inset: 0;
+  background-image: url('/bg.svg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.06;
   pointer-events: none;
   z-index: 0;
 }
