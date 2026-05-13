@@ -517,7 +517,7 @@ input:focus, select:focus {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  opacity: 0.06;
+  opacity: 0.04;
   pointer-events: none;
   z-index: 0;
 }
