@@ -17,7 +17,8 @@ const { initDB, getDB } = require('./models');
 const app = new Koa();
 const router = new Router();
 const SECRET_KEY = process.env.JWT_SECRET || 'your-secret-key-change-me';
-const DATA_DIR = '/app/data';
+const isDocker = fs.existsSync('/.dockerenv');
+const DATA_DIR = process.env.DATA_DIR || (isDocker ? '/app/data' : path.join(__dirname, 'data'));
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const ICONS_DIR = path.join(DATA_DIR, 'icons');
 

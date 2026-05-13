@@ -62,16 +62,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-white px-4">
-    <div class="w-full max-w-sm">
-      <div class="text-center mb-8">
-        <h1 class="text-3xl font-medium text-gray-900 mb-2">Quick</h1>
-        <p class="text-sm text-gray-400">安全验证</p>
-        <p class="text-sm text-gray-400 mt-2">请输入 2FA 验证码</p>
+  <div class="min-h-screen flex items-center justify-center bg-page px-4">
+    <div class="w-full max-w-sm fade-in">
+      <div class="text-center mb-10">
+        <h1 class="font-title text-3xl text-stone-800 tracking-tight mb-1">禅航</h1>
+        <p class="text-xs text-stone-300 tracking-widest uppercase mb-6">Verification</p>
+        <p class="text-sm text-stone-400">请输入 2FA 验证码</p>
       </div>
 
       <form @submit.prevent="login">
-        <div class="flex justify-center gap-2 mb-6" @paste="handlePaste">
+        <div class="flex justify-center gap-2.5 mb-6" @paste="handlePaste">
           <input
             v-for="(_, i) in 6"
             :key="i"
@@ -82,18 +82,18 @@ onMounted(() => {
             type="text"
             inputmode="numeric"
             maxlength="1"
-            class="w-12 h-14 text-center text-xl font-mono bg-gray-50 border-0 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-200 transition-all"
+            class="w-12 h-14 text-center text-xl font-mono bg-white border border-stone-200/60 rounded-xl focus:outline-none focus:border-stone-400 transition-all text-stone-700"
           />
         </div>
 
-        <div v-if="error" class="text-red-500 text-sm text-center mb-4">{{ error }}</div>
+        <div v-if="error" class="text-red-400 text-xs text-center mb-4 font-body">{{ error }}</div>
 
-        <button type="submit" class="w-full bg-gray-900 text-white py-3 rounded-xl hover:bg-gray-800 transition-colors text-sm font-medium">
+        <button type="submit" class="w-full bg-stone-800 text-white py-3 rounded-xl hover:bg-stone-700 transition-colors text-sm font-body shadow-sm">
           验证
         </button>
 
-        <div class="text-center mt-6">
-          <router-link to="/" class="text-sm text-gray-400 hover:text-gray-600">返回首页</router-link>
+        <div class="text-center mt-8">
+          <router-link to="/" class="text-xs text-stone-300 hover:text-stone-500 transition-colors font-body tracking-wide">返回首页</router-link>
         </div>
       </form>
     </div>
@@ -101,13 +101,29 @@ onMounted(() => {
 </template>
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');
+.font-title {
+  font-family: 'Instrument Serif', Georgia, serif;
+}
 
 * {
-  font-family: 'Inter', sans-serif;
+  font-family: 'DM Sans', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 body {
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.bg-page {
+  background-color: #faf9f7;
+}
+
+.fade-in {
+  animation: fadeIn 0.5s ease both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
